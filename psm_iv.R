@@ -149,7 +149,7 @@ plot(m4, type = "density", which.xs = c("MPCE_MRP"))
 
 #Baseline Specification (not v good balance)
 
-outcome_1 <- lm(data = matched_data_baseline_1, calpcpd_cersct ~ PDS_RWS, weights = weights)
+outcome_1 <- lm(data = matched_data_baseline_1, calpcpd_cercst ~ PDS_RWS, weights = weights)
 summary(outcome_1)
 
 #Heteroskedasticity Check and Correction
