@@ -217,12 +217,8 @@ stargazer(iv1)
 
 nss_mp <- dummy_cols(nss_mp, select_columns = "edu_hhh")
 
-#nss_mp <- dummy_cols(nss_mp, select_columns = "whetherownsland") #Ref: No
-
-
 iv2 <- ivreg(calpcpd_cercst ~ PDS_RWS + hhsize + MPCE_MRP + count_assets + sc + st + obc + land_own_dummy + regular_salary + hindu + islam + edu_hhh_1 + edu_hhh_2 + edu_hhh_3 + edu_hhh_4 + edu_hhh_5   |  hhsize + MPCE_MRP + count_assets + sc + st + obc + land_own_dummy + regular_salary + hindu + islam + edu_hhh_1 + edu_hhh_2 + edu_hhh_3 + edu_hhh_4 + edu_hhh_5 + typeofrationcard, data = nss_mp)
 stargazer(iv2)
-
 
 #Diagnostics for the 2nd IV Specification
 summary(iv2, vcov = sandwich, diagnostics = TRUE)
