@@ -20,6 +20,8 @@ library(lmtest) #for coeftest()
 library(optmatch) #for optimal matching
 library(fastDummies) #for creatind dummy variables
 library(sandwich) #for vcov in IV summary 
+library(rmarkdown) #for output compilation
+library(cobalt) #for balance tests
 
 
 #Importing Data 
@@ -35,11 +37,43 @@ nss_mp <- raw_nss %>%
   dplyr::filter(state_name == "MP")
 
 
-#Summary Statistics, exportable to LaTeX
+#Summary Statistics
 
 summary(nss_mp)
 stargazer(nss_mp)
 
+#Baseline Naive OLS Specification (with Robust Standard Errors)
+
+baseline_naive_ols <- lm(data = nss_mp, calpcpd_cercst ~ PDS_RWS + MPCE_MRP + count_assets + hhsize + land_own_dummy + sc + st + obc + regular_salary + hindu)
+rob_baseline_naive_ols <- coeftest(baseline_naive_ols, vcov = vcovHC(baseline_naive_ols, type = "HC0"))
+rob_baseline_naive_ols
+stargazer(baseline_naive_ols, se = list(rob_baseline_naive_ols[, "Std. Error"]))
+
+#DAG
+shorten_dag_arrows <- function(tidy_dag, shorten_distance){
+  
+  # Update underlying ggdag object
+  tidy_dag$data <- dplyr::mutate(tidy_dag$data, slope = (yend - y) / (xend - x), # Calculate slope of line
+                                 distance = sqrt((xend-x)^2 + (yend - y)^2), # Calculate total distance of line
+                                 proportion = shorten_distance/distance, # Calculate proportion by which to be shortened
+                                 xend = (1-proportion)*xend + (proportion*x), # Shorten xend
+                                 yend = (1-proportion)*yend + (proportion*y)) %>% # Shorten yend
+    dplyr::select(-slope, -distance, -proportion) # Drop intermediate values
+  
+  return(tidy_dag)
+}
+
+
+dag_object <- dagify(calorie ~ obs, obs ~ pds, obs ~ e, calorie ~ e,
+                     labels = c("calorie" = "Per Capita Calorie Intake",
+                                "obs" = "Observables",
+                                "e" = "Unobservables",
+                                "pds" = "PDS"),
+                     exposure = "pds",
+                     outcome = "calorie") %>% tidy_dagitty()
+
+dag_object <- shorten_dag_arrows(dag_object, shorten_distance = 0.02)
+ggdag(dag_object, text = FALSE) + theme_dag(base_size = 14) + theme(legend.position = "none", strip.text = element_blank()) + theme_dag_gray() + geom_dag_label_repel(aes(label = label), show.legend = FALSE)
 
 ###BASELINE SPECIFICATION: ONLY MPCE AS PREDICTOR OF PARTICIPATION###
 
@@ -47,6 +81,8 @@ stargazer(nss_mp)
 
 m1 <- matchit(PDS_RWS ~ MPCE_MRP, data = nss_mp, method = NULL, distance = "glm")
 summary(m1)
+unbalanced_plot <- bal.plot(PDS_RWS ~ MPCE_MRP, data = nss_mp) + scale_x_continuous(limits = c(0, 15000))
+unbalanced_check <- bal.tab(PDS_RWS ~ MPCE_MRP, data = nss_mp, v.threshold = 2)
 
 #We see imbalances in MPCE_MRP across those who received the PDS and those who did not. There is evidence of selection on observables. We can proceed with matching.
 
@@ -62,8 +98,10 @@ matched_data_baseline_1 <- match.data(m2)
 
 #Looking at Covariate Balance in the Matched Data by plotting propensity scores 
 
-plot(m2, type = "ecdf", which.xs = c("MPCE_MRP"))
-                           
+baseline_bal <- bal.plot(PDS_RWS ~ MPCE_MRP, data = matched_data_baseline_1)
+bal.tab(m2, v.threshold = 2)
+baseline_bal
+
 #Implementing Matching 2: Optimal Matching, Logit used for computing propensity scores. k=1 is maintained.
 
 m3 <- matchit(PDS_RWS ~ MPCE_MRP, data = nss_mp, method = "nearest", distance = "mahalanobis", ratio = 1)
@@ -73,7 +111,8 @@ matched_data_baseline_2 <- match.data(m3)
 
 #Looking at Covariate Balance in the Matched Data 
 
-plot(m3, type = "density", which.xs = c("MPCE_MRP"))
+bal.plot(m3, var.name = "MPCE_MRP")
+bal.tab(m3, v.threshold = 2)
 
 ###SPECIFICATION WITH MORE COVARIATES###
 
@@ -133,7 +172,7 @@ nss_mp1 <- nss_mp1[complete.cases(nss_mp1), ]
 
 
 #Implementing Nearest Neighbour Matching
-m4 <- matchit(PDS_RWS ~ MPCE_MRP + count_assets + sc + st + obc + land_own_dummy +regular_salary + hhsize + hindu + islam + kerosenelight + otheroil + gas + candle + electricity + otherlight,
+m4 <- matchit(PDS_RWS ~ MPCE_MRP + count_assets + sc + st + obc + land_own_dummy +regular_salary + hhsize + hindu + islam,
               data = nss_mp1, method = "nearest", distance = "logit", ratio = 1)
 summary(m4)
 head(m4)
@@ -142,12 +181,13 @@ matched_data_alt_1 <- match.data(m4) #Almost 50% of control trimmed! Common Supp
 
 #Covariate Balance for MPCE in the Matched Data 
 
-plot(m4, type = "density", which.xs = c("MPCE_MRP"))
+alt_bal <- bal.plot(PDS_RWS ~ MPCE_MRP + count_assets + sc + st + obc + land_own_dummy +regular_salary + hhsize + hindu + islam, data = matched_data_alt_1)
+bal.tab(m4, v.threshold = 2)
 
 ###Estimating ATT Using Matched Data in both the Baseline and Alternative Cases###
 
 
-#Baseline Specification (not v good balance)
+#Baseline Specification 
 
 outcome_1 <- lm(data = matched_data_baseline_1, calpcpd_cercst ~ PDS_RWS, weights = weights)
 summary(outcome_1)
@@ -170,6 +210,8 @@ durbinWatsonTest(outcome_2) #p=0, reject H0
 robust_outcome_2 <- coeftest(outcome_2, vcov = vcovHC(outcome_2,type = "HC0"))
 robust_outcome_2
 
+stargazer(outcome_1, outcome_2, se = list(robust_outcome_1[, "Std. Error"], robust_outcome_2[, "Std. Error"]))
+
 
 
 ###Instrumental Variable Specification: LATE Estimator###
@@ -186,17 +228,27 @@ nss_mp$typeofrationcard <- replace(nss_mp$typeofrationcard, nss_mp$typeofrationc
 
 summary(nss_mp$typeofrationcard)
 
+#Instrument Relevance: Regressing PDS_RWS on typeofrationcard
+
+relevance <- lm(data = nss_mp, PDS_RWS ~ typeofrationcard)
+summary(relevance) #Significant at the 1% level, the instrument is correlated with endogenous participation decision
+fitted_pds <- relevance$fitted.values
+
+#Are the residuals from regressing Y on D_hat correlated with D_hat?
+
+a <- lm(nss_mp$calpcpd_cercst ~ relevance$fitted.values)
+cor(relevance$fitted.values, a$residuals) #This is 4.16*(10)^(-16), that is approximately 0. 
+
 #Baseline IV Regression: No covariates 
 
 iv1 <- ivreg(calpcpd_cercst ~ PDS_RWS | typeofrationcard, data = nss_mp)
 
-#Diagnostics
+#Diagnostics in the summary() command 
 # -"Weak Instruments" is an F test on the First Stage that checks Instrument Relevance
 # -"Wu Hausman" has H0 that OLS estimators are consistent i.e there is no endogeneity. 
 # -"Sargan" is a test of overidentification for when no. of instruments > no. of regressors 
 summary(iv1, vcov = sandwich, diagnostics = TRUE)
 stargazer(iv1)
-
 
 
 #IV with Covariates: hhsize, socialgrp, count_assets, religion, land_ownership, religion, MPCE_MRP, education of HH Head
@@ -217,8 +269,16 @@ stargazer(iv1)
 
 nss_mp <- dummy_cols(nss_mp, select_columns = "edu_hhh")
 
+#nss_mp <- dummy_cols(nss_mp, select_columns = "whetherownsland") #Ref: No
+
+
 iv2 <- ivreg(calpcpd_cercst ~ PDS_RWS + hhsize + MPCE_MRP + count_assets + sc + st + obc + land_own_dummy + regular_salary + hindu + islam + edu_hhh_1 + edu_hhh_2 + edu_hhh_3 + edu_hhh_4 + edu_hhh_5   |  hhsize + MPCE_MRP + count_assets + sc + st + obc + land_own_dummy + regular_salary + hindu + islam + edu_hhh_1 + edu_hhh_2 + edu_hhh_3 + edu_hhh_4 + edu_hhh_5 + typeofrationcard, data = nss_mp)
 stargazer(iv2)
 
+
 #Diagnostics for the 2nd IV Specification
 summary(iv2, vcov = sandwich, diagnostics = TRUE)
+
+
+
+
