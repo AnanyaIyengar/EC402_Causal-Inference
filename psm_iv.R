@@ -183,6 +183,9 @@ matched_data_alt_1 <- match.data(m4) #Almost 50% of control trimmed! Common Supp
 
 alt_bal <- bal.plot(PDS_RWS ~ MPCE_MRP + count_assets + sc + st + obc + land_own_dummy +regular_salary + hhsize + hindu + islam, data = matched_data_alt_1)
 bal.tab(m4, v.threshold = 2)
+v <- data.frame(old = c("distance", "MPCE_MRP", "count_assets", "sc", "st", "obc", "land_own_dummy", "regular_salary", "hhsize", "hindu", "islam"), new = c("Distance", "MPCE", "HH Assets", "Prop. of SC", "Prop. of ST", "Prop. of OBC", "Land Ownership", "Regular Earnings", "HH Size", "Prop. of Hindu HH", "Prop. of Muslim HH" ))
+love.plot(bal.tab(m4), stats = "mean.diffs", threshold = 0.25, var.names = v, abs = FALSE) + xlab("Standardised Mean Differences")
+
 
 ###Estimating ATT Using Matched Data in both the Baseline and Alternative Cases###
 
@@ -218,38 +221,44 @@ stargazer(outcome_1, outcome_2, se = list(robust_outcome_1[, "Std. Error"], robu
 
 #Motivating the use of the instrument: Possession of AAY+BPL Ration Card -> MPCE -> Calorie Intake. 
 
-#Creating Dummy for Ration Card Ownership. If typeof rationcard == 1 | 2, then dummy = 1, else if typeof rationcard == 3 | 0 , then dummy = 1
+#Creating Dummy for Ration Card Ownership.
 
 nss_mp$typeofrationcard[is.na(nss_mp$typeofrationcard)] <- 0
-
 nss_mp$typeofrationcard <- as.numeric(nss_mp$typeofrationcard)
-nss_mp$typeofrationcard <- replace(nss_mp$typeofrationcard, nss_mp$typeofrationcard == 3, 0)
-nss_mp$typeofrationcard <- replace(nss_mp$typeofrationcard, nss_mp$typeofrationcard == 2, 1)
 
-summary(nss_mp$typeofrationcard)
+nss_mp <- dummy_cols(nss_mp, select_columns = "typeofrationcard")
+
+nss_mp$bpl <- nss_mp$typeofrationcard_2
+nss_mp$aay <- nss_mp$typeofrationcard_1
+nss_mp$apl <- nss_mp$typeofrationcard_3
+nss_mp$nocard <- nss_mp$typeofrationcard_0
+
+
+#Creating Dummy for Possession of Ration Card
+
+nss_mp$possessrationcard <- replace(nss_mp$possessrationcard, nss_mp$possessrationcard == 2, 0)
 
 #Instrument Relevance: Regressing PDS_RWS on typeofrationcard
 
-relevance <- lm(data = nss_mp, PDS_RWS ~ typeofrationcard)
+relevance <- lm(data = nss_mp, PDS_RWS ~ bpl + aay)
 summary(relevance) #Significant at the 1% level, the instrument is correlated with endogenous participation decision
+stargazer(relevance)
 fitted_pds <- relevance$fitted.values
 
 #Are the residuals from regressing Y on D_hat correlated with D_hat?
 
 a <- lm(nss_mp$calpcpd_cercst ~ relevance$fitted.values)
-cor(relevance$fitted.values, a$residuals) #This is 4.16*(10)^(-16), that is approximately 0. 
+cor(relevance$fitted.values, a$residuals) #This is -3.45*(10)^(-17) that is approximately 0. 
 
 #Baseline IV Regression: No covariates 
 
-iv1 <- ivreg(calpcpd_cercst ~ PDS_RWS | typeofrationcard, data = nss_mp)
+iv1 <- ivreg(calpcpd_cercst ~ PDS_RWS | bpl + aay + nocard, data = nss_mp)
 
 #Diagnostics in the summary() command 
 # -"Weak Instruments" is an F test on the First Stage that checks Instrument Relevance
 # -"Wu Hausman" has H0 that OLS estimators are consistent i.e there is no endogeneity. 
 # -"Sargan" is a test of overidentification for when no. of instruments > no. of regressors 
 summary(iv1, vcov = sandwich, diagnostics = TRUE)
-stargazer(iv1)
-
 
 #IV with Covariates: hhsize, socialgrp, count_assets, religion, land_ownership, religion, MPCE_MRP, education of HH Head
 
@@ -269,16 +278,16 @@ stargazer(iv1)
 
 nss_mp <- dummy_cols(nss_mp, select_columns = "edu_hhh")
 
-#nss_mp <- dummy_cols(nss_mp, select_columns = "whetherownsland") #Ref: No
-
-
-iv2 <- ivreg(calpcpd_cercst ~ PDS_RWS + hhsize + MPCE_MRP + count_assets + sc + st + obc + land_own_dummy + regular_salary + hindu + islam + edu_hhh_1 + edu_hhh_2 + edu_hhh_3 + edu_hhh_4 + edu_hhh_5   |  hhsize + MPCE_MRP + count_assets + sc + st + obc + land_own_dummy + regular_salary + hindu + islam + edu_hhh_1 + edu_hhh_2 + edu_hhh_3 + edu_hhh_4 + edu_hhh_5 + typeofrationcard, data = nss_mp)
-stargazer(iv2)
-
+iv2 <- ivreg(calpcpd_cercst ~ PDS_RWS + hhsize + MPCE_MRP + count_assets + sc + st + obc + land_own_dummy + regular_salary + hindu + islam + edu_hhh_1 + edu_hhh_2 + edu_hhh_3 + edu_hhh_4 + edu_hhh_5   |  hhsize + MPCE_MRP + count_assets + sc + st + obc + land_own_dummy + regular_salary + hindu + islam + edu_hhh_1 + edu_hhh_2 + edu_hhh_3 + edu_hhh_4 + edu_hhh_5 + bpl + aay, data = nss_mp)
 
 #Diagnostics for the 2nd IV Specification
 summary(iv2, vcov = sandwich, diagnostics = TRUE)
 
+#Tables for IV Results
 
+robust_iv_1 <- coeftest(iv1, vcov = vcovHC, type = "HC1")
+robust_iv_2 <- coeftest(iv2, vcov = vcovHC, type = "HC1")
+
+stargazer(iv1, iv2, se = list(robust_iv_1[, "Std. Error"], robust_iv_2[, "Std. Error"]))
 
 
