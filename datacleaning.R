@@ -6,6 +6,8 @@
 
 library(readr)
 library(dplyr)
+library(fastDummies)
+library(readxl)
 
 #NSS78: Sanitatation. Levels 1, 3, 4, 5. Household Level Outcomes#
 
@@ -148,3 +150,89 @@ san134 <- inner_join(sanitation_level4, san13, by = "primarykey")
 san1345 <- inner_join(sanitation_level5, san134, by = "primarykey")
 
 sanitation_outcomes <- as.data.frame(san1345)
+
+
+#Combining NSS Region and District to create "admin_district" variable 
+
+sanitation_outcomes$admin_district <- paste0(sanitation_outcomes$nssregion, sanitation_outcomes$district)
+
+#Recoding Dummy Variables
+
+sanitation_outcomes$sufficientdrinkingwater <- replace(sanitation_outcomes$sufficientdrinkingwater, sanitation_outcomes$sufficientdrinkingwater ==2, 0)
+sanitation_outcomes <- dummy_cols(sanitation_outcomes, select_columns = c("acesstoprincipaldrinkingwater", "distancetoprincipaldrinkingwater"))
+
+sanitation_outcomes$hhdrinkingwater <- sanitation_outcomes$acesstoprincipaldrinkingwater_1
+sanitation_outcomes$commonhhdrinkingwater <- sanitation_outcomes$acesstoprincipaldrinkingwater_2
+sanitation_outcomes$neighbourdrinkingwater <- sanitation_outcomes$acesstoprincipaldrinkingwater_3
+sanitation_outcomes$publicsourcecommunitydrinkingwater <- sanitation_outcomes$acesstoprincipaldrinkingwater_4
+sanitation_outcomes$publicsourceunrestricteddrinkingwater <- sanitation_outcomes$acesstoprincipaldrinkingwater_5
+sanitation_outcomes$pvtsourcecommunitydrinkingwater <- sanitation_outcomes$acesstoprincipaldrinkingwater_6
+sanitation_outcomes$pvtsourceunrestricteddrinkingwater <- sanitation_outcomes$acesstoprincipaldrinkingwater_7
+sanitation_outcomes$otherdrinkingwater <- sanitation_outcomes$acesstoprincipaldrinkingwater_7
+
+sanitation_outcomes$drinkingwaterwithindwelling <- sanitation_outcomes$distancetoprincipaldrinkingwater_1
+sanitation_outcomes$drinkingwateroutsidedwellingwithinpremises <- sanitation_outcomes$distancetoprincipaldrinkingwater_2
+sanitation_outcomes$lessthan0.2kmdrinkingwater <- sanitation_outcomes$distancetoprincipaldrinkingwater_3
+sanitation_outcomes$between0.2to0.5kmdrinkingwater <- sanitation_outcomes$distancetoprincipaldrinkingwater_4
+sanitation_outcomes$between0.5to1kmdrinkingwater <- sanitation_outcomes$distancetoprincipaldrinkingwater_5
+sanitation_outcomes$between1to1.5kmdrinkingwater <- sanitation_outcomes$distancetoprincipaldrinkingwater_6
+sanitation_outcomes$morethan1.5kmdrinkingwater <- sanitation_outcomes$distancetoprincipaldrinkingwater_7
+
+
+sanitation_outcomes <- dummy_cols(sanitation_outcomes, select_columns = c("drinkingwaterbenefit", "sanitationbenefit", "housingbenefit", "electrificationbenefit", "lpgbenefit"))
+
+
+sanitation_outcomes$nrdwp <- sanitation_outcomes$drinkingwaterbenefit_1
+sanitation_outcomes$amrut_water <- sanitation_outcomes$drinkingwaterbenefit_2
+sanitation_outcomes$smartcity_water <- sanitation_outcomes$drinkingwaterbenefit_3
+
+
+sanitation_outcomes$swachbharat <- sanitation_outcomes$sanitationbenefit_1
+sanitation_outcomes$amrut_sanitation <- sanitation_outcomes$sanitationbenefit_2
+sanitation_outcomes$smartcity_sanitation <- sanitation_outcomes$sanitationbenefit_3
+
+
+sanitation_outcomes$pmay <- sanitation_outcomes$housingbenefit_1
+sanitation_outcomes$otherhousing <- sanitation_outcomes$housingbenefit_2
+
+sanitation_outcomes$ddugjy <- sanitation_outcomes$electrificationbenefit_1
+
+sanitation_outcomes$pmuy <- sanitation_outcomes$lpgbenefit_1
+sanitation_outcomes$otherlpg <- sanitation_outcomes$lpgbenefit_2
+
+
+selected_data <- sanitation_outcomes %>% 
+  select(admin_district ,hhdrinkingwater, commonhhdrinkingwater, neighbourdrinkingwater, publicsourcecommunitydrinkingwater, publicsourceunrestricteddrinkingwater, pvtsourcecommunitydrinkingwater, pvtsourceunrestricteddrinkingwater, otherdrinkingwater, drinkingwaterwithindwelling, drinkingwateroutsidedwellingwithinpremises, lessthan0.2kmdrinkingwater, between0.2to0.5kmdrinkingwater, between0.5to1kmdrinkingwater, between1to1.5kmdrinkingwater, morethan1.5kmdrinkingwater, nrdwp, amrut_water, smartcity_water, swachbharat, amrut_sanitation, smartcity_sanitation, pmay, otherhousing, pmuy, otherlpg, ddugjy)
+
+#Taking averages across districts grouping by the "admin_district" variable
+
+
+mean_sanitation_outcomes <- selected_data%>%group_by(admin_district)%>%summarise_all("mean")
+
+
+#Making NAs in drinking water distance proportions to 0
+
+mean_sanitation_outcomes$drinkingwaterwithindwelling[is.na(mean_sanitation_outcomes$drinkingwaterwithindwelling)] <- 0
+mean_sanitation_outcomes$drinkingwateroutsidedwellingwithinpremises[is.na(mean_sanitation_outcomes$drinkingwateroutsidedwellingwithinpremises)] <- 0
+mean_sanitation_outcomes$lessthan0.2kmdrinkingwater[is.na(mean_sanitation_outcomes$lessthan0.2kmdrinkingwater)] <- 0
+mean_sanitation_outcomes$between0.2to0.5kmdrinkingwater[is.na(mean_sanitation_outcomes$between0.2to0.5kmdrinkingwater)] <- 0
+mean_sanitation_outcomes$between0.5to1kmdrinkingwater[is.na(mean_sanitation_outcomes$between0.5to1kmdrinkingwater)] <- 0
+mean_sanitation_outcomes$between1to1.5kmdrinkingwater[is.na(mean_sanitation_outcomes$between1to1.5kmdrinkingwater)] <- 0
+mean_sanitation_outcomes$morethan1.5kmdrinkingwater[is.na(mean_sanitation_outcomes$morethan1.5kmdrinkingwater)] <- 0
+
+#Downloading Data 
+shrug <- read_excel("merged_df.xlsx")
+shrug$admin_district <- shrug$Group.1
+
+#Merging outcome sanitation data
+
+merged_data_sanitation <- dplyr::inner_join(shrug, mean_sanitation_outcomes, by = "admin_district")
+
+#Downloading Merged Data
+
+write.csv(merged_data_sanitation, "C:\\Users\\anniy\\OneDrive\\Desktop\\Impact Term Paper\\merged_sanitation.csv", row.names = FALSE)
+
+
+
+       
+
