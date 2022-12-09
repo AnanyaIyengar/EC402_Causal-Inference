@@ -10,13 +10,13 @@ setwd("C:/Ananya Iyengar/Delhi School of Economics/402_Causal Inference/Causal_I
 
 #Installing Required Packages
 
-library(haven)
-library(dplyr)
-library(ggplot2)
+library(haven) #to import .dat files 
+library(dplyr) #for data manipulation
+library(ggplot2) #for graphing
 library(AER)
 library(car)
-library(lmtest)
-library(plm)
+library(lmtest) #for coeftest()
+library(plm) #for panel data models
 library(sandwich)
 library(stargazer)
 library(rmarkdown)
@@ -127,7 +127,7 @@ stargazer(panel)
 
 ###############################################################################
 
-#Pooled OLS: Full Data Model  + Diagnostics for log(newinc) as Y
+#Data Cleaning and Creating Relevant Variables
 
 #Balance Checks (3058 =/= 3083)
 
@@ -161,18 +161,62 @@ panel$logwage_pc[is.infinite(panel$logwage_pc)] <- 0
 panel$logbusinc <- log(panel$bus1_per)
 panel$logbusinc[is.infinite(panel$logbusinc)] <- 0
 
+panel$person <- panel$id
+panel$round <- panel$year
 
-#Creating plm object
+#Choosing a subset of data on the basis of the "emp" variable
 
+emp_05_12 <- 0
+emp_05 <- 0
+emp_12 <- 0
+emp_none <- 0 
+
+panel5 <- panel%>%dplyr::filter(round == 2005)
+panel12 <- panel%>%dplyr::filter(round == 2012)
+
+for (i in 1:length(panel5$person)) {
+  if (panel5$emp[i] == 1 & panel12$emp[i] == 1) {
+    emp_05_12 <- emp_05_12 + 1 
+  }
+  else if (panel5$emp[i] == 1 & panel12$emp[i] == 0) {
+    emp_05 <- emp_05 + 1
+  }
+  else if (panel5$emp[i] == 0 & panel12$emp[i] == 1){
+    emp_12 <- emp_12 + 1
+  }
+  else {
+    emp_none <- emp_none + 1
+  }
+}
+
+print(emp_05_12) 
+print(emp_05) 
+print(emp_12) 
+print(emp_none) 
+
+#Remove emp_05 (dropped out of labour market) and emp_non (selected out of labour market in both years)
+
+panel$suitable <- paste0(panel$round, panel$emp)
+panel <- panel%>%dplyr::filter(suitable != 20120)
+
+table(panel$suitable)
+
+panel[which(panel$person == 55336), ]
+
+#Form Panel and Create Panel
 panel <- pdata.frame(panel, index = c("id", "year"), drop.index = TRUE, row.names = FALSE)
 head(attr(panel, "index"))
 
 pdim(panel)$balanced #FALSE
 
-#Creating Balance by dropping 25 observations
-
 panel <- make.pbalanced(panel, balance.type = "shared.individuals")
 pdim(panel)$balanced #TRUE
+
+
+################################################################################
+
+#Pooled OLS: Full Data Model  + Diagnostics for log(newinc) as Y
+
 
 #Running a Pooled OLS Specification: log(newinc) ~ years_education + age + age^2 + Time-Variant + e_it 
 
@@ -220,8 +264,20 @@ summary(alternate_within_newinc)
 #Fixed Effects Within Specification with Potential Experience 
 
 panel <- panel%>%dplyr::mutate(exp = age - years_education - 6)
-panel$exp[panel$exp < 0] <- 0
-panel$exp[panel$age > 80] <- 70
+
+#Summary of Potential Experience
+
+table(panel$exp)
+
+panel[which(panel$exp == -3), ]
+panel[which(panel$exp == -2), ]
+
+#23 people, no major issue
+
+panel$exp <- ifelse(panel$exp == -3, 0, panel$exp)
+panel$exp <- ifelse(panel$exp == -2, 0, panel$exp)
+panel$exp <- ifelse(panel$exp == -1, 0, panel$exp)
+
 panel <- panel%>%dplyr::mutate(expsq = (exp)^2)
 
 baseline_within_exp <- plm(lognewinc ~ years_education + exp + expsq, data = panel, model = "within", effect = "individual", index = c("id", "year"))
@@ -229,7 +285,6 @@ summary(baseline_within_exp)
 
 alternate_within_exp <- plm(lognewinc ~ years_education + exp + expsq + hhsize + married + num_asset_owned + urban, data = panel, model = "within", effect = "individual", index = c("id", "year"))
 summary(alternate_within_exp)
-
 
 ################################################################################
 
@@ -243,51 +298,44 @@ bptest(alternate_within_newinc) #reject H0
 pdwtest(baseline_within_newinc) #don't reject null
 pdwtest(alternate_within_newinc) #don't reject null
 
-#Clustered Standard Errors
+#Robust Standard Errors
 
-robust_within_baseline_age <- coeftest(baseline_within_newinc, vcov = vcovHC(baseline_within_newinc, type = "sss", cluster = "group"))
-robust_within_alternate_age <- coeftest(alternate_within_newinc, vcov = vcovHC(baseline_within_newinc, type = "sss", cluster = "group"))
+robust_within_baseline_age <- coeftest(baseline_within_newinc, vcov = vcovHC(baseline_within_newinc, type = "HC0"))
+robust_within_alternate_age <- coeftest(alternate_within_newinc, vcov = vcovHC(baseline_within_newinc, type = "HC0"))
 
-robust_within_baseline_exp <- coeftest(baseline_within_exp, vcov = vcovHC(baseline_within_newinc, type = "sss", cluster = "group"))
-robust_within_alternate_exp <- coeftest(alternate_within_exp, vcov = vcovHC(baseline_within_newinc, type = "sss", cluster = "group"))
+robust_within_baseline_exp <- coeftest(baseline_within_exp, vcov = vcovHC(baseline_within_newinc, type = "HC0"))
+robust_within_alternate_exp <- coeftest(alternate_within_exp, vcov = vcovHC(baseline_within_newinc, type = "HC0"))
 
 
 ################################################################################
-#TWFE with Potential Experience 
+
+#TWFE with Age (Because of Measurement Errors in Experience)
 
 #Baseline
 
-baseline_twfe_exp <- plm(lognewinc ~ years_education + exp + expsq, data = panel, effect = "twoway", index = c("id", "year"))
-summary(baseline_twfe_exp)
+baseline_twfe_age <- plm(lognewinc ~ years_education + age + agesq, data = panel, effect = "twoway", index = c("id", "year"))
+summary(baseline_twfe_age)
 
 #Alternate
 
-alternate_twfe_exp <- plm(lognewinc ~ years_education + exp + expsq + hhsize + married + num_asset_owned + urban, data = panel, effect = "twoway", index = c("id", "year"))
-summary(alternate_twfe_exp)
+alternate_twfe_age <- plm(lognewinc ~ years_education + age + agesq + hhsize + married + num_asset_owned + urban, data = panel, effect = "twoway", index = c("id", "year"))
+summary(alternate_twfe_age)
 
 #Robust Standard Errors 
 
-robust_twfe_baseline <- coeftest(baseline_twfe_exp, vcov = vcovHC(baseline_twfe_exp, type = "sss", cluster = "group"))
-robust_twfe_alternate <- coeftest(alternate_twfe_exp, vcov = vcovHC(alternate_twfe_exp, type = "sss", cluster = "group"))
+robust_twfe_baseline <- coeftest(baseline_twfe_age, vcov = vcovHC(baseline_twfe_exp, type = "HC0"))
+robust_twfe_alternate <- coeftest(alternate_twfe_age, vcov = vcovHC(alternate_twfe_exp, type = "HC0"))
 
+robust_twfe_baseline
+robust_twfe_alternate
 
 ################################################################################
 
 #LaTeX Tables
 
+stargazer(baseline_twfe_age, alternate_twfe_age, se = list(robust_twfe_baseline[,"Std. Error"], robust_twfe_alternate[,"Std. Error"]))
 
-
-
-
-
-
-
-
-
-
-
-
-###############################################################################
+################################################################################
 
 #Comments 
 
@@ -296,9 +344,24 @@ robust_twfe_alternate <- coeftest(alternate_twfe_exp, vcov = vcovHC(alternate_tw
 #Bias: measurement errors in age. 
 #Selection into employment is endogenous
 #cross sectional variation!!!
-#clustering???
-#12 - 7 
+#age12- 7 
 # for NA -> 0, can't say that these were ppl with 0 income or ppl who refused to record 
-# people in school ca also work! problems with potential exp specification
+# people in school ca also work! problems with potential exp specification: thus, not used in twfe
+# emp =1, 93 yo, edu = 0, exp = 0 in data (but past life experience??) + family business income imputation!!! 
+#underrepoting age for marriage among women?? Undergrads report weird stuff! Interesting anecdotes!
 
 ###############################################################################
+
+#Acknowledgement 
+
+#THANK YOU TO: Rajsi (wifey), JVM (because this _was_ kind of fun even though a little torturous), StackExchange (all hail), 
+# Twitter (for random help, fuck you elon), EconometricsWithR (blessing), Min Yoongi (for writing nevermind), Spotify Whales (iykyk)
+
+
+
+
+
+
+
+
+
