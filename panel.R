@@ -225,7 +225,7 @@ attach(panel)
 reg_pooled_baseline_newinc <- plm(lognewinc ~ years_education + age + agesq, data = panel, model = "pooling", index = c("id", "year"), effect = "individual")
 summary(reg_pooled_baseline_newinc)
 
-reg_pooled_alternate_newinc <- plm(lognewinc ~ years_education + age + agesq + hhsize + married + num_asset_owned + urban, data = panel, model = "pooling", effect = "individual")
+reg_pooled_alternate_newinc <- plm(lognewinc ~ years_education + age + agesq + hhsize + married + num_asset_owned, data = panel, model = "pooling", effect = "individual")
 summary(reg_pooled_alternate_newinc)
 
 #Diagnostics: Heteroskedasticity
@@ -258,7 +258,7 @@ stargazer(reg_pooled_baseline_newinc, reg_pooled_alternate_newinc, se = list(reg
 baseline_within_newinc <- plm(lognewinc ~ years_education + age + agesq, data = panel, model = "within", effect = "individual", index = c("id", "year"))
 summary(baseline_within_newinc)
 
-alternate_within_newinc <- plm(lognewinc ~ years_education + age + agesq + hhsize + married + num_asset_owned + urban, data = panel, model = "within", effect = "individual", index = c("id", "year"))
+alternate_within_newinc <- plm(lognewinc ~ years_education + age + agesq + hhsize + married + num_asset_owned, data = panel, model = "within", effect = "individual", index = c("id", "year"))
 summary(alternate_within_newinc)
 
 #Fixed Effects Within Specification with Potential Experience 
@@ -283,7 +283,7 @@ panel <- panel%>%dplyr::mutate(expsq = (exp)^2)
 baseline_within_exp <- plm(lognewinc ~ years_education + exp + expsq, data = panel, model = "within", effect = "individual", index = c("id", "year"))
 summary(baseline_within_exp)
 
-alternate_within_exp <- plm(lognewinc ~ years_education + exp + expsq + hhsize + married + num_asset_owned + urban, data = panel, model = "within", effect = "individual", index = c("id", "year"))
+alternate_within_exp <- plm(lognewinc ~ years_education + exp + expsq + hhsize + married + num_asset_owned, data = panel, model = "within", effect = "individual", index = c("id", "year"))
 summary(alternate_within_exp)
 
 ################################################################################
@@ -306,6 +306,12 @@ robust_within_alternate_age <- coeftest(alternate_within_newinc, vcov = vcovHC(b
 robust_within_baseline_exp <- coeftest(baseline_within_exp, vcov = vcovHC(baseline_within_newinc, type = "HC0"))
 robust_within_alternate_exp <- coeftest(alternate_within_exp, vcov = vcovHC(baseline_within_newinc, type = "HC0"))
 
+#Tables
+
+#Within: Age
+
+stargazer(baseline_within_newinc, alternate_within_newinc, se = list(robust_within_baseline_age[,"Std. Error"], robust_within_alternate_age[,"Std. Error"]))
+
 
 ################################################################################
 
@@ -318,7 +324,7 @@ summary(baseline_twfe_age)
 
 #Alternate
 
-alternate_twfe_age <- plm(lognewinc ~ years_education + age + agesq + hhsize + married + num_asset_owned + urban, data = panel, effect = "twoway", index = c("id", "year"))
+alternate_twfe_age <- plm(lognewinc ~ years_education + age + agesq + hhsize + married + num_asset_owned, data = panel, effect = "twoway", index = c("id", "year"))
 summary(alternate_twfe_age)
 
 #Robust Standard Errors 
@@ -352,10 +358,7 @@ stargazer(baseline_twfe_age, alternate_twfe_age, se = list(robust_twfe_baseline[
 
 ###############################################################################
 
-#Acknowledgement 
 
-#THANK YOU TO: Rajsi (wifey), JVM (because this _was_ kind of fun even though a little torturous), StackExchange (all hail), 
-# Twitter (for random help, fuck you elon), EconometricsWithR (blessing), Min Yoongi (for writing nevermind), Spotify Whales (iykyk)
 
 
 
