@@ -17,11 +17,10 @@ library(AER)
 library(car)
 library(lmtest) #for coeftest()
 library(plm) #for panel data models
-library(sandwich)
-library(stargazer)
-library(rmarkdown)
-library(fastDummies)
-library(rddtools)
+library(sandwich) #for robust standard errors
+library(stargazer) #for LATEX tables
+library(rmarkdown) #for compiling code
+library(fastDummies) #for creating dummy variables
 
 ################################################################################
 
