@@ -5,7 +5,7 @@
 
 ###CLEANING###
 
-#Packages
+#Installing Required Packages
 
 library(haven) #importing a .dta type file
 library(dplyr) #data manipulation
@@ -23,6 +23,7 @@ library(sandwich) #for vcov in IV summary
 library(rmarkdown) #for output compilation
 library(cobalt) #for balance tests
 
+######################################################################################################
 
 #Importing Data 
 
@@ -36,11 +37,14 @@ raw_nss <- as.data.frame(raw_nss)
 nss_mp <- raw_nss %>%
   dplyr::filter(state_name == "MP")
 
+#######################################################################################################
 
 #Summary Statistics
 
 summary(nss_mp)
 stargazer(nss_mp)
+
+#######################################################################################################
 
 #Baseline Naive OLS Specification (with Robust Standard Errors)
 
@@ -48,6 +52,8 @@ baseline_naive_ols <- lm(data = nss_mp, calpcpd_cercst ~ PDS_RWS + MPCE_MRP + co
 rob_baseline_naive_ols <- coeftest(baseline_naive_ols, vcov = vcovHC(baseline_naive_ols, type = "HC0"))
 rob_baseline_naive_ols
 stargazer(baseline_naive_ols, se = list(rob_baseline_naive_ols[, "Std. Error"]))
+
+########################################################################################################
 
 #DAG
 shorten_dag_arrows <- function(tidy_dag, shorten_distance){
@@ -74,6 +80,8 @@ dag_object <- dagify(calorie ~ obs, obs ~ pds, obs ~ e, calorie ~ e,
 
 dag_object <- shorten_dag_arrows(dag_object, shorten_distance = 0.02)
 ggdag(dag_object, text = FALSE) + theme_dag(base_size = 14) + theme(legend.position = "none", strip.text = element_blank()) + theme_dag_gray() + geom_dag_label_repel(aes(label = label), show.legend = FALSE)
+
+########################################################################################################
 
 ###BASELINE SPECIFICATION: ONLY MPCE AS PREDICTOR OF PARTICIPATION###
 
@@ -113,6 +121,8 @@ matched_data_baseline_2 <- match.data(m3)
 
 bal.plot(m3, var.name = "MPCE_MRP")
 bal.tab(m3, v.threshold = 2)
+
+########################################################################################################
 
 ###SPECIFICATION WITH MORE COVARIATES###
 
@@ -169,7 +179,7 @@ nss_mp1 <- subset(nss_mp, select = -c(typeofrationcard))
 
 nss_mp1 <- nss_mp1[complete.cases(nss_mp1), ]
 
-
+########################################################################################################
 
 #Implementing Nearest Neighbour Matching
 m4 <- matchit(PDS_RWS ~ MPCE_MRP + count_assets + sc + st + obc + land_own_dummy +regular_salary + hhsize + hindu + islam,
@@ -186,6 +196,7 @@ bal.tab(m4, v.threshold = 2)
 v <- data.frame(old = c("distance", "MPCE_MRP", "count_assets", "sc", "st", "obc", "land_own_dummy", "regular_salary", "hhsize", "hindu", "islam"), new = c("Distance", "MPCE", "HH Assets", "Prop. of SC", "Prop. of ST", "Prop. of OBC", "Land Ownership", "Regular Earnings", "HH Size", "Prop. of Hindu HH", "Prop. of Muslim HH" ))
 love.plot(bal.tab(m4), stats = "mean.diffs", threshold = 0.25, var.names = v, abs = FALSE) + xlab("Standardised Mean Differences")
 
+########################################################################################################
 
 ###Estimating ATT Using Matched Data in both the Baseline and Alternative Cases###
 
@@ -207,6 +218,8 @@ robust_outcome_1
 outcome_2 <- lm(data = matched_data_alt_1, calpcpd_cercst ~ PDS_RWS, weights = weights)
 summary(outcome_2) #significant at the 5% level 
 
+########################################################################################################
+
 #Heteroskedasticity Check and Correction
 
 durbinWatsonTest(outcome_2) #p=0, reject H0
@@ -215,7 +228,7 @@ robust_outcome_2
 
 stargazer(outcome_1, outcome_2, se = list(robust_outcome_1[, "Std. Error"], robust_outcome_2[, "Std. Error"]))
 
-
+########################################################################################################
 
 ###Instrumental Variable Specification: LATE Estimator###
 
@@ -238,6 +251,8 @@ nss_mp$nocard <- nss_mp$typeofrationcard_0
 
 nss_mp$possessrationcard <- replace(nss_mp$possessrationcard, nss_mp$possessrationcard == 2, 0)
 
+########################################################################################################
+
 #Instrument Relevance: Regressing PDS_RWS on typeofrationcard
 
 relevance <- lm(data = nss_mp, PDS_RWS ~ bpl + aay)
@@ -245,10 +260,14 @@ summary(relevance) #Significant at the 1% level, the instrument is correlated wi
 stargazer(relevance)
 fitted_pds <- relevance$fitted.values
 
+########################################################################################################
+
 #Are the residuals from regressing Y on D_hat correlated with D_hat?
 
 a <- lm(nss_mp$calpcpd_cercst ~ relevance$fitted.values)
 cor(relevance$fitted.values, a$residuals) #This is -3.45*(10)^(-17) that is approximately 0. 
+
+########################################################################################################
 
 #Baseline IV Regression: No covariates 
 
@@ -257,8 +276,11 @@ iv1 <- ivreg(calpcpd_cercst ~ PDS_RWS | bpl + aay + nocard, data = nss_mp)
 #Diagnostics in the summary() command 
 # -"Weak Instruments" is an F test on the First Stage that checks Instrument Relevance
 # -"Wu Hausman" has H0 that OLS estimators are consistent i.e there is no endogeneity. 
-# -"Sargan" is a test of overidentification for when no. of instruments > no. of regressors 
+# -"Sargan" is a test of overidentification for when no. of instruments > no. of regressors
+
 summary(iv1, vcov = sandwich, diagnostics = TRUE)
+
+########################################################################################################
 
 #IV with Covariates: hhsize, socialgrp, count_assets, religion, land_ownership, religion, MPCE_MRP, education of HH Head
 
@@ -282,6 +304,8 @@ iv2 <- ivreg(calpcpd_cercst ~ PDS_RWS + hhsize + MPCE_MRP + count_assets + sc + 
 
 #Diagnostics for the 2nd IV Specification
 summary(iv2, vcov = sandwich, diagnostics = TRUE)
+
+########################################################################################################
 
 #Tables for IV Results
 
